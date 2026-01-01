@@ -68,10 +68,10 @@ export default {
         },
       ],
       // 壁纸配置引擎
-      // 可选模式: 'wallhaven', 'custom', 'none'
+      // 可选模式: 'wallhaven', 'custom', 'none' (使用本地 config.js 配置)
       wallpaperProvider: 'none', 
       
-      // 1. Wallhaven 配置 (已停用)
+      // 1. Wallhaven 配置
       wallhavenConfig: {
           keywords: 'landscape', 
           proxy: '', 
