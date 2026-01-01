@@ -1,5 +1,5 @@
 {
-  "name": "homepage",
+  "name": "update-worker-name-to-weblog-weblog",
   "main": "src/worker.js",
   "compatibility_date": "2025-10-10",
   "assets": {

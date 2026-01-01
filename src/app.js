@@ -410,44 +410,49 @@ export default {
         try {
             const targetUrl = this.wallhavenConfig.apiUrl + this.wallhavenConfig.keywords;
             
-            // 尝试直接请求 Wallhaven (配合 no-referrer meta 标签)
-            // 如果本地网络（如 Clash）配置正确，这通常是可行的，且比公共代理更稳定
-            // 如果直接请求失败（CORS），则捕获错误并尝试使用代理
+            // 设置超时机制，如果 API 响应超过 3 秒，直接认为失败
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000);
             
-            try {
-                const response = await fetch(targetUrl);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data && data.data) {
-                        // 将图片 URL 转换为代理 URL，解决 ORB/跨域问题
-                        // 假设当前页面在 Worker 上运行，直接使用相对路径 /proxy?url=...
-                        // 如果在本地开发，Vite 代理需要配置 /proxy -> 线上Worker 或本地模拟
-                        // 简单起见，我们直接构建相对 URL，让 Worker 拦截
-                        this.wallpaperList = data.data.map(item => `/proxy?url=${encodeURIComponent(item.path)}`);
-                        
-                        if (this.wallpaperList.length > 0) {
-                            this.loadNextImage();
-                            return; // 成功则直接返回，不走下面的代理逻辑
-                        }
+            // 直接请求我们的 Worker 代理 (或者本地 Vite 代理)
+            const response = await fetch(targetUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.data) {
+                    // 将图片 URL 转换为代理 URL，解决 ORB/跨域问题
+                    // 假设当前页面在 Worker 上运行，直接使用相对路径 /proxy?url=...
+                    // 如果在本地开发，Vite 代理需要配置 /proxy -> 线上Worker 或本地模拟
+                    // 简单起见，我们直接构建相对 URL，让 Worker 拦截
+                    this.wallpaperList = data.data.map(item => `/proxy?url=${encodeURIComponent(item.path)}`);
+                    
+                    if (this.wallpaperList.length > 0) {
+                        this.loadNextImage();
+                        return;
                     }
                 }
-            } catch (directError) {
-                console.log("直连 Wallhaven 失败，尝试使用代理...", directError);
-            }
-
-            // 如果直连失败，尝试使用 corsproxy.io
-            const response = await fetch(this.wallhavenConfig.proxy + encodeURIComponent(targetUrl));
-            if (!response.ok) throw new Error('Proxy network response was not ok');
-            const data = await response.json();
-            
-            if (data && data.data) {
-                // 使用 wsrv.nl 进行图片压缩和加速 (可选，如果想用原图可去掉 wsrv.nl)
-                this.wallpaperList = data.data.map(item => `https://wsrv.nl/?url=${encodeURIComponent(item.path)}`);
-                if (this.wallpaperList.length > 0) this.loadNextImage();
+            } else {
+                 console.error("Wallhaven API 请求失败:", response.status);
+                 throw new Error(`API error: ${response.status}`);
             }
         } catch (error) {
-            console.error("Wallhaven 加载失败", error);
-             // 如果 Wallhaven 彻底失败，回退到默认设置
+            console.error("Wallhaven 加载失败 (API 或超时)", error);
+            // 失败时，随机选择一张本地图片作为兜底
+            this.fallbackToLocalImage();
+        }
+    },
+    
+    // 新增：兜底本地图片逻辑
+    fallbackToLocalImage() {
+        const localImages = this.configdata.wallpaper.pic;
+        if (localImages && localImages.length > 0) {
+            const randomIndex = Math.floor(Math.random() * localImages.length);
+            const fallbackUrl = localImages[randomIndex].url;
+            console.log("已切换到本地兜底壁纸:", fallbackUrl);
+            this.updateBackgroundLayer(fallbackUrl);
+        } else {
+             // 最后的最后，设为空
              let imageurl = "";
              this.setMainProperty(imageurl);
         }
