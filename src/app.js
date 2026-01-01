@@ -68,14 +68,13 @@ export default {
         },
       ],
       // 壁纸配置引擎
-      // 可选模式: 'wallhaven', 'custom'
-      wallpaperProvider: 'wallhaven', 
+      // 可选模式: 'wallhaven', 'custom', 'none'
+      wallpaperProvider: 'none', 
       
-      // 1. Wallhaven 配置
+      // 1. Wallhaven 配置 (已停用)
       wallhavenConfig: {
-          keywords: 'landscape', // 搜索关键词: anime, landscape, cyberpunk
-          proxy: '', // 不再需要外部代理
-          // 使用相对路径，自动适配本地开发代理和线上 Worker
+          keywords: 'landscape', 
+          proxy: '', 
           apiUrl: '/api/wallhaven?sorting=random&atleast=3840x2160&purity=100&q='
       },
 
