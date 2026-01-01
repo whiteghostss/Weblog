@@ -29,7 +29,7 @@
               <div :style="xs||sm?{'font-size':'2.3rem'}:{'display':'none'}" class="leleo-left-welcome">{{ configdata.welcometitle }}</div>  
               <v-avatar class="leleo-left-avatar" :size="xs||sm?120:140" :style="xs||sm?{'margin-top': '0'}:{'margin-top': '2rem'}" @mouseenter="musicplayershow(1)" @mouseleave="musicplayershow(0)">
                   <v-img :class="{'leleo-spin':isPlaying}"
-                  alt="Leleo"
+                  alt="Finn"
                   :src=configdata.avatar
                   ></v-img>
                   <!-- 由于当ismusicplayer显示后，fadein无效果，所以需要设置一个过渡动画 -->
