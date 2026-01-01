@@ -1,100 +1,134 @@
+在国内直接调用 Wallhaven API，主要面临两个问题：**网络连接不稳定（甚至无法连接）**以及**浏览器的跨域/ORB 限制**。
 
-`net::ERR_BLOCKED_BY_ORB` 是 Chrome 浏览器为了防止跨站脚本攻击（XSS）和数据泄露而引入的一种极其严格的保护机制。简单来说，浏览器认为这个图片请求**不安全**或者**不符合规范**，因此在数据到达网页之前就直接拦截了。
+既然你已经在使用 **Cloudflare Workers**，最完美的解决方案是利用 Worker 搭建一个“**全能中转站**”。这个中转站不仅可以代理 **API 请求**（获取图片列表），还可以代理 **图片数据**（显示高清原图）。
 
-在使用 Wallhaven 图片作为背景时，这个问题通常由 **跨域配置不一致** 引起。以下是几种从易到难的解决办法：
+以下是具体实现步骤：
 
-### 方法一：在 JS 预加载时显式声明 `crossOrigin`（最有效）
+### 第一步：编写全能代理 Worker
 
-如果你在 JavaScript 中使用 `new Image()` 来预加载图片，必须明确告诉浏览器这是一个跨域请求，并且你不需要携带 Cookie（匿名模式）。
+这个 Worker 可以同时处理 API 和图片的转发，并强制添加跨域头。
 
-**修改后的 JS 代码：**
+1. 在 Cloudflare 控制台创建一个新的 Worker。
+2. 粘贴以下代码：
 
 ```javascript
-function rotateBackground() {
-    const nextUrl = selectedUrls[currentRotateIndex];
-    const proxy = "https://images.weserv.nl/?url=";
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    // 获取客户端传来的 target 参数（即你要访问的 Wallhaven API 地址或图片地址）
+    let targetUrl = url.searchParams.get('url');
+
+    if (!targetUrl) {
+      return new Response('请在 URL 后添加 ?url=目标地址', { status: 400 });
+    }
+
+    // 1. 构造请求头，伪装成合法访问
+    const newHeaders = new Headers();
+    newHeaders.set('Referer', 'https://wallhaven.cc/');
+    newHeaders.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+
+    try {
+      // 2. 发起对 Wallhaven 的真实请求
+      const response = await fetch(targetUrl, {
+        method: 'GET',
+        headers: newHeaders,
+      });
+
+      // 3. 处理返回数据
+      const contentType = response.headers.get('content-type');
+    
+      // 构造新的返回头，解决跨域问题
+      const responseHeaders = new Headers(response.headers);
+      responseHeaders.set('Access-Control-Allow-Origin', '*');
+      responseHeaders.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    
+      // 如果是图片，设置长缓存以提高加载速度
+      if (contentType && contentType.includes('image')) {
+        responseHeaders.set('Cache-Control', 'public, max-age=604800'); // 缓存一周
+      }
+
+      return new Response(response.body, {
+        status: response.status,
+        headers: responseHeaders,
+      });
+
+    } catch (e) {
+      return new Response('代理请求失败: ' + e.message, { status: 500 });
+    }
+  },
+};
+```
+
+3. 部署后，你会得到一个地址，例如：`https://api-proxy.xxxx.workers.dev`。
+
+---
+
+### 第二步：在前端代码中使用代理
+
+在你的个人主页 JS 代码中，现在你需要通过这个中转站来获取数据和显示图片。
+
+#### 1. 获取图片列表 (调用 API)
+
+不要直接请求 `wallhaven.cc`，而是请求你的 Worker。
+
+```javascript
+async function getWallpapers() {
+    const myProxy = "https://api-proxy.xxxx.workers.dev/?url=";
+    const wallhavenApi = "https://wallhaven.cc/api/v1/search?q=nature&sorting=random&atleast=1920x1080";
   
+    // 拼接成：代理地址 + 编码后的 API 地址
+    const finalUrl = myProxy + encodeURIComponent(wallhavenApi);
+
+    try {
+        const response = await fetch(finalUrl);
+        const data = await response.json();
+        const list = data.data; // 这里就拿到了图片数组
+        console.log("获取成功：", list);
+        return list;
+    } catch (err) {
+        console.error("API 调用失败：", err);
+    }
+}
+```
+
+#### 2. 显示图片 (设置背景)
+
+同理，图片的 URL 也要经过中转，否则国内加载会极慢且可能被 ORB 拦截。
+
+```javascript
+function setBackground(imageUrl) {
+    const myProxy = "https://api-proxy.xxxx.workers.dev/?url=";
+    const finalImageUrl = myProxy + encodeURIComponent(imageUrl);
+
     const img = new Image();
-    // 【关键步骤】必须设置这行，否则会被 ORB 或 CORS 拦截
-    img.crossOrigin = "anonymous"; 
-  
-    img.src = proxy + encodeURIComponent(nextUrl); // 建议对 URL 进行编码
+    img.crossOrigin = "anonymous"; // 必须配合 Worker 里的 CORS 头
+    img.src = finalImageUrl;
 
     img.onload = () => {
-        // ... 原有的切换逻辑
-        document.getElementById('bg-next').style.backgroundImage = `url('${img.src}')`;
+        document.body.style.backgroundImage = `url('${finalImageUrl}')`;
     };
 }
 ```
 
 ---
 
-### 方法二：在 HTML 中添加 Meta 标签（绕过 Referrer 检查）
+### 方案的优势：
 
-Wallhaven 等网站会检查 `Referer` 头。如果你的网页没有设置，浏览器会默认发送当前网址，Wallhaven 发现不是自家网址就会拒绝，从而触发浏览器的拦截报错。
+1. **绕过 GFW**：Cloudflare Workers 的服务器在全球（包括离中国较近的香港、新加坡等），它访问 Wallhaven 是极速的。
+2. **解决 ORB 错误**：通过在 Worker 中手动设置 `Access-Control-Allow-Origin: *`，浏览器会认为这是一个安全的跨域请求，不会进行拦截。
+3. **隐藏 Referer**：Worker 自动帮你在请求头里补上了 `Referer: https://wallhaven.cc/`，绕过了 Wallhaven 的防盗链检测。
+4. **速度优化**：Cloudflare 会自动缓存这些图片和 API 结果，国内用户第二次访问时会非常快。
 
-在 `<head>` 标签中加入：
+### 💡 进阶：如果你有 API Key
 
-```html
-<meta name="referrer" content="no-referrer">
+如果你想搜索更多内容（如 NSFW 或更高权限内容），Wallhaven 的 API 需要 Key。你可以在 Worker 的代码里直接加上它，保护你的 Key 不被前端看到：
+
+```javascript
+// 在 Worker 内部拼接 Key
+const finalApiUrl = targetUrl + (targetUrl.includes('?') ? '&' : '?') + 'apikey=你的KEY';
+const response = await fetch(finalApiUrl, { ... });
 ```
 
-*这行代码的作用是：告诉浏览器在请求图片时不要告诉对方“我是从哪个网站来的”，这样可以绕过 90% 的图片防盗链。*
+### 总结
 
----
-
-### 方法三：改用 Cloudflare Workers 搭建私有代理（最稳定）
-
-如果你有 Clash，说明你已经有科学上网环境，但 `wsrv.nl` 这种公共代理可能还是会被 ORB 拦截。你可以利用免费的 **Cloudflare Workers** 搭建一个属于你自己的图片中转站。
-
-1. 登录 Cloudflare，创建一个新的 Worker。
-2. 粘贴以下代码：
-   ```javascript
-   addEventListener('fetch', event => {
-     event.respondWith(handleRequest(event.request))
-   })
-
-   async function handleRequest(request) {
-     const url = new URL(request.url)
-     const imageUrl = url.searchParams.get('url') // 获取参数里的图片地址
-
-     if (!imageUrl) return new Response('Missing URL', { status: 400 })
-
-     const response = await fetch(imageUrl, {
-       headers: { 'Referer': 'https://wallhaven.cc/' } // 伪装成 Wallhaven 自己在请求
-     })
-
-     const newResponse = new Response(response.body, response)
-     // 【核心】强制添加 CORS 允许头，彻底解决 ORB 和跨域问题
-     newResponse.headers.set('Access-Control-Allow-Origin', '*')
-     newResponse.headers.set('Cache-Control', 'public, max-age=86400')
-     return newResponse
-   }
-   ```
-3. 部署后，你会得到一个网址，比如 `https://my-proxy.workers.dev/`。
-4. 在你的项目中使用：`const proxy = "https://my-proxy.workers.dev/?url=";`
-
----
-
-### 方法四：既然有 Clash，尝试直接请求（不带公共代理）
-
-如果你电脑上的 Clash 运行正常，**其实你完全不需要 `wsrv.nl`**。直接请求 Wallhaven 的原图链接，配合 `no-referrer` 往往就能成功。
-
-1. 去掉代码里所有的 `https://images.weserv.nl/?url=`。
-2. 确保 `index.html` 有 `<meta name="referrer" content="no-referrer">`。
-3. **在 Clash 中检查逻辑**：
-   * 打开 Clash 仪表盘（Dashboard）。
-   * 在“规则”或“连接”中，确认 `w.wallhaven.cc` 这个域名没有被拦截，且确实走的是代理节点。
-   * 如果报错，尝试在 Clash 里开启 **"Global" (全局模式)** 测试。如果全局模式下图片能显示，说明是之前的规则分流问题。
-
----
-
-### 为什么 `net::ERR_BLOCKED_BY_ORB` 这么难搞？
-
-这是因为 Chrome 现在要求：如果一个资源声明自己是图片（MIME 类型是 `image/jpeg` 等），那么它的返回头里必须带有 `Access-Control-Allow-Origin`，或者请求时不能带有敏感信息。
-
-**总结建议：**
-
-1. 先加上 `<meta name="referrer" content="no-referrer">`。
-2. 在 JS 预加载图片时加上 `img.crossOrigin = "anonymous";`。
-3. 如果这两步做了还报错，说明 `wsrv.nl` 这个代理服务器的返回头不符合 Chrome 的新安全标准，建议按照**方法三**用 Cloudflare 自己搭一个。
+这就是目前**最标准、最高效**的国内调用方案。核心就是：**所有发往 Wallhaven 的请求（无论是 JSON 数据还是 JPG 图片），全部塞进你的 Cloudflare Worker 中转一下。**zheshi

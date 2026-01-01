@@ -419,7 +419,12 @@ export default {
                 if (response.ok) {
                     const data = await response.json();
                     if (data && data.data) {
-                        this.wallpaperList = data.data.map(item => item.path);
+                        // 将图片 URL 转换为代理 URL，解决 ORB/跨域问题
+                        // 假设当前页面在 Worker 上运行，直接使用相对路径 /proxy?url=...
+                        // 如果在本地开发，Vite 代理需要配置 /proxy -> 线上Worker 或本地模拟
+                        // 简单起见，我们直接构建相对 URL，让 Worker 拦截
+                        this.wallpaperList = data.data.map(item => `/proxy?url=${encodeURIComponent(item.path)}`);
+                        
                         if (this.wallpaperList.length > 0) {
                             this.loadNextImage();
                             return; // 成功则直接返回，不走下面的代理逻辑
