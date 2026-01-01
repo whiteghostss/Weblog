@@ -81,7 +81,8 @@
                     aspect-ratio="1.7778"
                     :src= item.img
                     cover
-                    :style="{ opacity: 0.8 }"
+                    :style="{ opacity: 0.8, cursor: 'pointer' }"
+                    @click="openPreview(item.img)"
                   ></v-img>
                   <v-card-title :style="xs?{'font-size': '0.9rem','padding': '0.15rem 0.5rem'}:{'font-size': '1.1rem','padding':'0.2rem 0.8rem'}">
                     {{item.title}}
@@ -130,6 +131,8 @@ export default {
     props: ['configdata','formattedTime','formattedDate','projectcards'],
 	data() {
 		return {
+			imageDialog: false,
+			previewImage: '',
 			searchQuery: '',
 			selectedEngine: { title: 'Bing', value: 'bing' },
       		searchEngines :[
@@ -150,8 +153,12 @@ export default {
 			const str = this.searchQuery.trim();
   			return this.isLikelyUrl(str);
 		}
-	},
+    },
     methods:{
+      openPreview(imgUrl) {
+        this.previewImage = imgUrl;
+        this.imageDialog = true;
+      },
       projectcardsShow(key){
         for(let i = 0;i < this.projectcards.length;i++){
           if(i != key){

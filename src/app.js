@@ -74,8 +74,9 @@ export default {
       // 1. Wallhaven 配置
       wallhavenConfig: {
           keywords: 'landscape', // 搜索关键词: anime, landscape, cyberpunk
-          proxy: 'https://corsproxy.io/?', // 代理服务，用于解决跨域和墙的问题
-          apiUrl: 'https://wallhaven.cc/api/v1/search?sorting=random&atleast=3840x2160&purity=100&q='
+          proxy: '', // 不再需要外部代理
+          // 使用相对路径，自动适配本地开发代理和线上 Worker
+          apiUrl: '/api/wallhaven?sorting=random&atleast=3840x2160&purity=100&q='
       },
 
       // 2. 自定义/第三方 API 配置 (适合直接返回图片的接口)
@@ -409,19 +410,35 @@ export default {
         try {
             const targetUrl = this.wallhavenConfig.apiUrl + this.wallhavenConfig.keywords;
             
-            // 直接请求我们的 Worker 代理 (或者本地 Vite 代理)
-            const response = await fetch(targetUrl);
-            if (response.ok) {
-                const data = await response.json();
-                if (data && data.data) {
-                    this.wallpaperList = data.data.map(item => item.path);
-                    if (this.wallpaperList.length > 0) {
-                        this.loadNextImage();
-                        return;
+            // 尝试直接请求 Wallhaven (配合 no-referrer meta 标签)
+            // 如果本地网络（如 Clash）配置正确，这通常是可行的，且比公共代理更稳定
+            // 如果直接请求失败（CORS），则捕获错误并尝试使用代理
+            
+            try {
+                const response = await fetch(targetUrl);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.data) {
+                        this.wallpaperList = data.data.map(item => item.path);
+                        if (this.wallpaperList.length > 0) {
+                            this.loadNextImage();
+                            return; // 成功则直接返回，不走下面的代理逻辑
+                        }
                     }
                 }
-            } else {
-                 console.error("Wallhaven API 请求失败:", response.status);
+            } catch (directError) {
+                console.log("直连 Wallhaven 失败，尝试使用代理...", directError);
+            }
+
+            // 如果直连失败，尝试使用 corsproxy.io
+            const response = await fetch(this.wallhavenConfig.proxy + encodeURIComponent(targetUrl));
+            if (!response.ok) throw new Error('Proxy network response was not ok');
+            const data = await response.json();
+            
+            if (data && data.data) {
+                // 使用 wsrv.nl 进行图片压缩和加速 (可选，如果想用原图可去掉 wsrv.nl)
+                this.wallpaperList = data.data.map(item => `https://wsrv.nl/?url=${encodeURIComponent(item.path)}`);
+                if (this.wallpaperList.length > 0) this.loadNextImage();
             }
         } catch (error) {
             console.error("Wallhaven 加载失败", error);
