@@ -1,5 +1,5 @@
 <template>
-  <canvas id="polarChart"></canvas>
+  <canvas ref="polarChartCanvas"></canvas>
 </template>
 
 <script>
@@ -23,7 +23,9 @@ export default {
     }
     this.skills = this.configdata.polarChart.skills;
     this.skillPoints = this.configdata.polarChart.skillPoints;
-    this.renderChart();
+    this.$nextTick(() => {
+        this.renderChart();
+    });
   },
   methods: {
     generateColors(count) {
@@ -37,7 +39,9 @@ export default {
       return colors;
     },
     renderChart() {
-      const ctx = document.getElementById('polarChart').getContext('2d');
+      const canvas = this.$refs.polarChartCanvas;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
       const colors = this.generateColors(this.skills.length);
       new Chart(ctx, {
         type: 'polarArea',

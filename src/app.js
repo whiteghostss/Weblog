@@ -6,9 +6,10 @@ import tab3 from './components/tabs/tab3.vue';
 import loader from './components/loader.vue';
 import polarchart from './components/polarchart.vue';
 import config from './config.js';
-import { getCookie } from './utils/cookieUtils.js';
+import { getCookie, setCookie } from './utils/cookieUtils.js';
 import { setMeta,getFormattedTime,getFormattedDate,dataConsole } from './utils/common.js';
 import { useDisplay } from 'vuetify'
+import { db } from './utils/db.js';
 
 export default {
   components: {
@@ -67,24 +68,7 @@ export default {
           component: "tab3",
         },
       ],
-      // 壁纸配置引擎
-      // 可选模式: 'wallhaven', 'custom', 'none' (使用本地 config.js 配置)
-      wallpaperProvider: 'none', 
       
-      // 1. Wallhaven 配置
-      wallhavenConfig: {
-          keywords: 'landscape', 
-          proxy: '', 
-          apiUrl: '/api/wallhaven?sorting=random&atleast=3840x2160&purity=100&q='
-      },
-
-      // 2. 自定义/第三方 API 配置 (适合直接返回图片的接口)
-      // 推荐接口:
-      // 风景: https://api.ixiaowai.cn/gqapi/gqapi.php
-      // 动漫: https://api.ixiaowai.cn/api/api.php
-      // 必应: https://api.dujin.org/bing/1920.php
-      customApiUrl: 'https://api.ixiaowai.cn/gqapi/gqapi.php',
-
       wallpaperList: [],
       wallpaperIndex: 0,
       activeLayer: 1,
@@ -104,10 +88,50 @@ export default {
     this.dataConsole();
     this.setMeta(this.configdata.metaData.title,this.configdata.metaData.description,this.configdata.metaData.keywords,this.configdata.metaData.icon);
     
-    // 初始化壁纸引擎
-    if (this.wallpaperProvider !== 'none') {
-        this.initWallpaperEngine();
-    } else {
+    // 初始化壁纸逻辑
+    // 检查自动播放状态和播放列表配置
+    try {
+        const autoPlay = getCookie('leleoAutoPlay') === 'true';
+        if (autoPlay) {
+            // 获取播放列表
+            const savedPlaylists = localStorage.getItem('leleoPlaylists');
+            const savedIndex = localStorage.getItem('leleoActivePlaylistIndex');
+            
+            if (savedPlaylists && savedIndex !== null) {
+                const playlists = JSON.parse(savedPlaylists);
+                const activeIndex = parseInt(savedIndex);
+                const activeList = playlists[activeIndex] || [];
+                
+                if (activeList.length > 0) {
+                    console.log(`检测到自动轮播：列表 ${activeIndex + 1}，共 ${activeList.length} 张`);
+                    this.wallpaperList = activeList.map(item => item.url);
+                    // 立即加载第一张
+                    this.loadNextImage();
+                    // 启动 60s 轮播
+                    this.wallpaperTimer = setInterval(this.loadNextImage, 60000); 
+                } else {
+                     console.log("当前播放列表为空，降级到本地配置");
+                     this.setCookie('leleoAutoPlay', 'false', 365);
+                     imageurl = this.setMainProperty(imageurl);
+                }
+            } else {
+                // 如果没有新版播放列表，尝试兼容旧版逻辑（全部收藏）
+                const favorites = await db.getAllFavorites();
+                if (favorites && favorites.length > 0) {
+                    console.log("检测到旧版收藏数据，自动迁移到轮播模式");
+                    this.wallpaperList = favorites.map(f => f.url);
+                    this.loadNextImage();
+                    this.wallpaperTimer = setInterval(this.loadNextImage, 60000); 
+                } else {
+                    imageurl = this.setMainProperty(imageurl);
+                }
+            }
+        } else {
+            console.log("自动轮播未开启，使用本地配置");
+            imageurl = this.setMainProperty(imageurl);
+        }
+    } catch (error) {
+        console.error("初始化壁纸失败，回退到本地配置:", error);
         imageurl = this.setMainProperty(imageurl);
     }
     
@@ -136,17 +160,20 @@ export default {
           
           // 等待所有图片加载完成或超时
           Promise.race([Promise.all(imagePromises), timeoutPromise]).then(()=>{
-            if(imageurl){
-              const img = new Image();
-              img.src = imageurl;
-              // resolve() 函数通将一个 Promise 对象从未完成状态转变为已完成状态
-              img.onload = () => {resolve();};
-              img.onerror = (err) => {reject(err);};
+            if(imageurl || (this.wallpaperList.length > 0)){
+              // 如果有 imageurl (静态背景) 或 wallpaperList (动态轮播)，且不是纯视频模式
+              // 这里的判断略复杂，简化为：如果不是明确的视频模式，尝试预加载第一张
+              const firstBg = imageurl || (this.wallpaperList.length > 0 ? this.wallpaperList[this.wallpaperIndex === 0 ? 0 : this.wallpaperIndex - 1] : '');
+              if (firstBg && !firstBg.endsWith('.mp4') && !firstBg.endsWith('.webm')) {
+                  const img = new Image();
+                  img.src = firstBg;
+                  img.onload = () => {resolve();};
+                  img.onerror = (err) => {reject(err);};
+              } else {
+                  // 视频或空
+                  resolve();
+              }
             }else{
-                // 如果没有静态图片背景（例如使用动态壁纸模式），则直接 resolve，
-                // 避免页面一直卡在 loading 状态。
-                // 之前的逻辑是尝试等待视频加载，但如果没有视频 src，会导致永久等待。
-                
                 // 检查是否有视频源
                 if (this.videosrc) {
                    const video = this.$refs.VdPlayer;
@@ -163,8 +190,6 @@ export default {
                        resolve();
                    }
                 } else {
-                    // 既没有图片也没有视频（例如 Wallhaven/Bing 模式且还没加载完第一张图）
-                    // 直接结束 loading，让页面显示出来
                     resolve();
                 }
             }
@@ -216,15 +241,6 @@ export default {
     audioLoading(val){
       this.isPlaying = !val;
     }
-
-  //若弹出框使得页面播放卡顿，可以先停止背景播放
-  //   dialog1(val){
-  //     if(val){
-  //       this.$refs.VdPlayer.pause();
-  //     }else{
-  //       this.$refs.VdPlayer.play();
-  //     }
-  //  }
   },
 
   computed: {
@@ -237,7 +253,7 @@ export default {
   },
   
   methods: {
-    getCookie,setMeta,getFormattedTime,getFormattedDate,dataConsole,
+    getCookie,setCookie,setMeta,getFormattedTime,getFormattedDate,dataConsole,
 
     setMainProperty(imageurl){
       const root = document.documentElement;
@@ -256,13 +272,12 @@ export default {
   
       let leleodatabackground = this.getCookie("leleodatabackground");
       
-      // Fix: Check if xs is available, otherwise default to false or get from this
       const isXs = this.xs ? this.xs.value : false;
       
       if(leleodatabackground){
         if(isXs){
           if(leleodatabackground.mobile.type == "pic"){
-            root.style.setProperty('--leleo-background-image-url', `url('${leleodatabackground.mobile.datainfo.url}')`);
+            this.updateBackgroundLayer(leleodatabackground.mobile.datainfo.url);
             imageurl = leleodatabackground.mobile.datainfo.url;
             return imageurl;
           }else{
@@ -270,7 +285,7 @@ export default {
           }
         }else{
           if(leleodatabackground.pc.type == "pic"){
-            root.style.setProperty('--leleo-background-image-url', `url('${leleodatabackground.pc.datainfo.url}')`);
+            this.updateBackgroundLayer(leleodatabackground.pc.datainfo.url);
             imageurl = leleodatabackground.pc.datainfo.url;
             return imageurl;
           }else{
@@ -281,7 +296,7 @@ export default {
       }else{
         if(isXs){
           if(this.configdata.background.mobile.type == "pic"){
-            root.style.setProperty('--leleo-background-image-url', `url('${this.configdata.background.mobile.datainfo.url}')`);
+            this.updateBackgroundLayer(this.configdata.background.mobile.datainfo.url);
             imageurl = this.configdata.background.mobile.datainfo.url;
             return imageurl;
           }else{
@@ -289,7 +304,7 @@ export default {
           }
         }else{
           if(this.configdata.background.pc.type == "pic"){
-            root.style.setProperty('--leleo-background-image-url', `url('${this.configdata.background.pc.datainfo.url}')`);
+            this.updateBackgroundLayer(this.configdata.background.pc.datainfo.url);
             imageurl = this.configdata.background.pc.datainfo.url;
             return imageurl;
           }else{
@@ -298,6 +313,7 @@ export default {
           
         }
       }
+      return imageurl;
     },
 
     projectcardsShow(key){
@@ -387,95 +403,43 @@ export default {
       this.isExpanded = false;
     },
     
-    // 壁纸引擎核心逻辑
-    async initWallpaperEngine() {
-        if (this.wallpaperProvider === 'wallhaven') {
-            await this.fetchWallhaven();
-        } else if (this.wallpaperProvider === 'custom') {
-            this.loadCustomApi();
-        }
-
-        // 只有列表模式需要定时轮播，自定义API模式每次加载都是新的
-        if (this.wallpaperProvider !== 'custom') {
-            this.wallpaperTimer = setInterval(this.loadNextImage, 20000); 
-        } else {
-             // 自定义API模式也可以定时刷新
-             this.wallpaperTimer = setInterval(this.loadCustomApi, 20000);
-        }
-    },
-
-    // 1. Wallhaven 模式
-    async fetchWallhaven() {
-        try {
-            const targetUrl = this.wallhavenConfig.apiUrl + this.wallhavenConfig.keywords;
-            
-            // 设置超时机制，如果 API 响应超过 3 秒，直接认为失败
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000);
-            
-            // 直接请求我们的 Worker 代理 (或者本地 Vite 代理)
-            const response = await fetch(targetUrl, { signal: controller.signal });
-            clearTimeout(timeoutId);
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data && data.data) {
-                    // 将图片 URL 转换为代理 URL，解决 ORB/跨域问题
-                    // 假设当前页面在 Worker 上运行，直接使用相对路径 /proxy?url=...
-                    // 如果在本地开发，Vite 代理需要配置 /proxy -> 线上Worker 或本地模拟
-                    // 简单起见，我们直接构建相对 URL，让 Worker 拦截
-                    this.wallpaperList = data.data.map(item => `/proxy?url=${encodeURIComponent(item.path)}`);
-                    
-                    if (this.wallpaperList.length > 0) {
-                        this.loadNextImage();
-                        return;
-                    }
-                }
-            } else {
-                 console.error("Wallhaven API 请求失败:", response.status);
-                 throw new Error(`API error: ${response.status}`);
-            }
-        } catch (error) {
-            console.error("Wallhaven 加载失败 (API 或超时)", error);
-            // 失败时，随机选择一张本地图片作为兜底
-            this.fallbackToLocalImage();
-        }
-    },
-    
-    // 新增：兜底本地图片逻辑
-    fallbackToLocalImage() {
-        const localImages = this.configdata.wallpaper.pic;
-        if (localImages && localImages.length > 0) {
-            const randomIndex = Math.floor(Math.random() * localImages.length);
-            const fallbackUrl = localImages[randomIndex].url;
-            console.log("已切换到本地兜底壁纸:", fallbackUrl);
-            this.updateBackgroundLayer(fallbackUrl);
-        } else {
-             // 最后的最后，设为空
-             let imageurl = "";
-             this.setMainProperty(imageurl);
-        }
-    },
-
-    // 2. Bing 模式 (已移除)
-
-    // 3. 自定义/第三方 API 模式
-    loadCustomApi() {
-        // 给 URL 加时间戳防止缓存，实现每次刷新
-        const nextImageUrl = this.customApiUrl + (this.customApiUrl.includes('?') ? '&' : '?') + 't=' + new Date().getTime();
-        this.updateBackgroundLayer(nextImageUrl);
+    // 初始化收藏夹轮播引擎 (已弃用，逻辑直接写在 mounted 中)
+    async initFavoritesEngine() {
+        // ...
     },
 
     // 通用：加载列表中的下一张
     loadNextImage() {
         if (this.wallpaperList.length === 0) return;
         const nextImageUrl = this.wallpaperList[this.wallpaperIndex];
-        this.updateBackgroundLayer(nextImageUrl);
+        
+        // 检查是图片还是视频
+        // 我们的 db 存了 type，但这里 wallpaperList 只是 url 数组
+        // 简单通过后缀判断，或者改进 initFavoritesEngine 存对象
+        const isVideo = nextImageUrl.endsWith('.mp4') || nextImageUrl.endsWith('.webm');
+        
+        if (isVideo) {
+             this.videosrc = nextImageUrl;
+             this.bg1Url = ''; // 清除图片
+             this.bg2Url = '';
+             this.activeLayer = 0; // 0 表示都不显示，或者不影响
+        } else {
+             this.updateBackgroundLayer(nextImageUrl);
+             // 如果当前是视频模式，需要切换回图片模式
+             // updateBackgroundLayer 会设置 css 变量
+        }
+        
         this.wallpaperIndex = (this.wallpaperIndex + 1) % this.wallpaperList.length;
     },
 
     // 通用：更新背景图层（带预加载）
     updateBackgroundLayer(url) {
+        // 更新 CSS 变量，以防 App.vue 仍依赖它
+        const root = document.documentElement;
+        root.style.setProperty('--leleo-background-image-url', `url('${url}')`);
+        
+        this.videosrc = ''; // 停止视频
+
         const tempImg = new Image();
         // 设置 crossOrigin 为 anonymous，尝试解决 canvas/ORB 问题
         tempImg.crossOrigin = "anonymous";

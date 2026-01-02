@@ -61,14 +61,7 @@
                   </transition>
                 </v-avatar>
 
-                <v-card class="ma-5 pa-2 leleo-left-card" variant="tonal" :max-width="xs?270:300" style="text-align: center;">
-                    <template v-slot:title>
-                    <span>Tags</span>
-                    </template>
-                    <v-chip v-for="item in personalizedtags" density="compact" link class="ma-1" size="small">
-                    {{item}}
-                    </v-chip>
-                </v-card>
+                
 
                 <div class="leleo-left-chart">
                     <polarchart :style="xs||sm?{'height':'210px'}:{'height':'270px'}"/>
@@ -259,4 +252,19 @@
 <style scoped>
   @import url(/css/app.less);
   @import url(/css/mobile.less);
+
+  .bg-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-size: cover;
+      background-position: center;
+      transition: opacity 1s ease-in-out;
+      z-index: -2; /* 确保在视频下层 (-1) 之下? 不，视频 z-index 应该是 -1 */
+  }
+  .video-bg {
+      z-index: -1;
+  }
 </style>
