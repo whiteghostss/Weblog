@@ -24,9 +24,6 @@
           
           <v-spacer></v-spacer>
 
-          <v-chip class="mt-3 ml-3" prepend-icon="mdi-webhook"  size="large" style="color: var(--leleo-vcard-color);">
-            部署项目
-          </v-chip>
           <v-container class="pb-10">
             <v-row>
               <v-col
@@ -54,7 +51,8 @@
                   <v-card-actions :style="xs||sm||md?{'padding': '0','min-height': '0','height':'2.5rem'}:{'min-height': '0','height':'2.8rem'}">
                     <v-btn :href="item.url"
                     target="_blank"
-                      :text= "item.go"
+                      :prepend-icon="item.goIcon"
+                      :text= "item.goText"
                     ></v-btn>
                     <v-spacer></v-spacer>
                     <v-btn

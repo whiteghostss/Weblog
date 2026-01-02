@@ -75,6 +75,8 @@ export default {
       bg1Url: '',
       bg2Url: '',
       wallpaperTimer: null,
+      socialDialog: false,
+      socialPopupImg: '',
     };
   },
   async mounted() {
@@ -453,6 +455,12 @@ export default {
                 this.activeLayer = 1;
             }
         };
+    },
+    showSocialPopup(link) {
+      if (link.startsWith("popup:")) {
+        this.socialPopupImg = link.replace("popup:", "");
+        this.socialDialog = true;
+      }
     },
   }
 };

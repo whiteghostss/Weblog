@@ -54,9 +54,9 @@ const config = {
 	//社交按钮
 	socialPlatformIcons: [
 		{ icon: "mdi-github", link: "https://github.com/whiteghostss" },
-		{ icon: "mdi-email", link: "mailto:leleo886@foxmail.com" },
-		{ icon: "mdi-qqchat", link: "https://im.qq.com/" },
-		{ icon: "mdi-wechat", link: "https://wx.qq.com/" },
+		{ icon: "mdi-code-braces", link: "https://leetcode.cn/" },
+		{ icon: "mdi-qqchat", link: "popup:/img/QQ.jpg" },
+		{ icon: "mdi-wechat", link: "popup:/img/Weixin.jpg" },
 		{ icon: "mdi-youtube", link: "https://www.youtube.com" },
 		{ icon: "mdi-television-classic", link: "https://www.bilibili.com/" }
 	],
@@ -138,10 +138,10 @@ const config = {
 
 	//项目卡片 其中 字段"show"控制初始卡片的text是否展开
 	projectcards: [
-		{ go: "🚀 前往", img: "/img/sunshine.jpg", title: "Project 1", subtitle: "1,000 miles of wonder", text: "If you see this line, I've managed to get your attention.", url: "https://leleo.top", show: false },
-		{ go: "🗂️ 前往", img: "/img/sunshine.jpg", title: "Project 2", subtitle: "2,000 miles of wonder", text: "If you see this line, I've managed to get your attention.", url: "https://leleo.top", show: false },
-		{ go: "📝 前往", img: "/img/sunshine.jpg", title: "Project 3", subtitle: "3,000 miles of wonder", text: "If you see this line, I've managed to get your attention.", url: "https://leleo.top", show: false },
-		{ go: "👍 前往", img: "/img/sunshine.jpg", title: "Project 4", subtitle: "4,000 miles of wonder", text: "If you see this line, I've managed to get your attention.", url: "https://leleo.top", show: false },
+		{ goText: "查看", goIcon: "mdi-lightbulb-on", img: "/img/sunshine.jpg", title: "Tips", subtitle: "实用技巧与笔记", text: "短小、精悍、随手记的实用信息。", url: "https://leleo.top", show: false },
+		{ goText: "探索", goIcon: "mdi-flask", img: "/img/sunshine.jpg", title: "Lab", subtitle: "黑科技实验室", text: "各种有趣 API 或小工具，如壁纸切换器、API 转发器等。", url: "https://leleo.top", show: false },
+		{ goText: "阅读", goIcon: "mdi-book-open-variant", img: "/img/sunshine.jpg", title: "Blog", subtitle: "核心内容归档", text: "文章总数与分类标签，技术与生活的记录。", url: "https://leleo.top", show: false },
+		{ goText: "部署", goIcon: "mdi-rocket-launch", img: "/img/sunshine.jpg", title: "Project", subtitle: "项目部署与开源", text: "存放个人的开源项目或者软件作品。", url: "https://leleo.top", show: false },
 	],
 
 	statement: ["备案号：XXICP备123456789号", "Copyright © 2025 Finn"],

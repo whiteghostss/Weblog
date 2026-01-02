@@ -73,7 +73,9 @@
                         <v-btn :size="xs?25:33" variant="tonal" color="var(--leleo-vcard-color)"
                         class="ma-1 leleo-social-bticon"
                         icon
-                        :href="item.link" target="_blank"
+                        :href="item.link.startsWith('popup:') ? undefined : item.link" 
+                        :target="item.link.startsWith('popup:') ? undefined : '_blank'"
+                        @click="item.link.startsWith('popup:') ? showSocialPopup(item.link) : null"
                         >
                     <v-icon :icon=item.icon :size="xs?20:25" class="social-bticon-icon"></v-icon></v-btn>
                     </v-col>
@@ -244,6 +246,12 @@
             </p>
           </div>
         </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="socialDialog" width="auto">
+      <v-card>
+        <v-img :src="socialPopupImg" :width="xs ? 300 : 400" cover></v-img>
+      </v-card>
     </v-dialog>
   </v-app>
 </template>
